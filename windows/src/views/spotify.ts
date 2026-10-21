@@ -47,11 +47,19 @@ function seek(seconds: number) {
   void Bridge.spotifyControl("seek", target);
 }
 
-function setFlag(which: "shuffle" | "repeat", on: boolean) {
+function setFlag(which: "shuffle", on: boolean) {
   if (!Spotify.state.running) return;
   Spotify.state = { ...Spotify.state, [which]: on };
   State.notify();
   void Bridge.spotifyControl(which, on ? 1 : 0);
+}
+
+function cycleRepeat() {
+  if (!Spotify.state.running) return;
+  const repeat = ((Spotify.state.repeat + 1) % 3) as 0 | 1 | 2;
+  Spotify.state = { ...Spotify.state, repeat };
+  State.notify();
+  void Bridge.spotifyControl("repeat", repeat);
 }
 
 // A slider drag sends at most one volume every 120 ms (SpotifyController.setVolume).
@@ -290,7 +298,7 @@ export function buildSpotifyCard(): SpotifyCardHost {
   const shuffle = iconButton(ICONS.shuffle, 10, 2.2, () => setFlag("shuffle", !Spotify.state.shuffle));
   const prev = iconButton(ICONS.backward, 11, 0, () => void Bridge.spotifyControl("previous"));
   const next = iconButton(ICONS.forward, 11, 0, () => void Bridge.spotifyControl("next"));
-  const repeat = iconButton(ICONS.repeat, 10, 2.2, () => setFlag("repeat", !Spotify.state.repeat));
+  const repeat = iconButton(ICONS.repeat, 10, 2.2, cycleRepeat);
   prev.style.color = "#C5C8CD";
   next.style.color = "#C5C8CD";
   const play = h("button", { class: "np-play", onclick: togglePlay });
@@ -382,7 +390,9 @@ export function buildSpotifyCard(): SpotifyCardHost {
     shuffle.style.color = s.shuffle ? green : "#6B7079";
     shuffle.title = s.shuffle ? t("Shuffle on") : t("Shuffle off");
     repeat.style.color = s.repeat ? green : "#6B7079";
-    repeat.title = s.repeat ? t("Repeat on") : t("Repeat off");
+    clear(repeat);
+    repeat.append(svg(s.repeat === 2 ? ICONS.repeatOne : ICONS.repeat, 10, { stroke: 2.2 }));
+    repeat.title = s.repeat === 2 ? t("Repeat one") : s.repeat === 1 ? t("Repeat all") : t("Repeat off");
     prev.title = t("Previous");
     next.title = t("Next");
     if (playIcon !== s.playing) {
