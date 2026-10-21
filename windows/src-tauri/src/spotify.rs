@@ -118,8 +118,8 @@ pub struct PlayerState {
     /// Unix milliseconds.
     pub position_at: f64,
     pub shuffle: bool,
-    /// LoopStatus is not "None" (the Mac's `repeating`).
-    pub repeat: bool,
+    /// 0 = none, 1 = playlist/list, 2 = track.
+    pub repeat: u8,
     /// 0…100.
     pub volume: i32,
 }
@@ -134,7 +134,7 @@ impl Default for PlayerState {
             position: 0.0,
             position_at: 0.0,
             shuffle: false,
-            repeat: false,
+            repeat: 0,
             volume: 50,
         }
     }
@@ -222,7 +222,7 @@ impl PlayerState {
                 }
                 "LoopStatus" => {
                     if let Some(s) = value.str() {
-                        self.repeat = s != "None";
+                        self.repeat = match s { "Track" => 2, "Playlist" | "List" => 1, _ => 0 };
                     }
                 }
                 "Volume" => {
@@ -440,7 +440,7 @@ pub async fn spotify_refresh(app: AppHandle) -> Option<PlayerState> {
 }
 
 /// A control from the card or the pill: `playPause`, `next`, `previous`,
-/// `seek` (seconds), `shuffle` / `repeat` (1 on, 0 off), `volume` (0…100).
+/// `seek` (seconds), `shuffle` (0/1), `repeat` (0 off, 1 list, 2 track), `volume` (0…100).
 #[tauri::command]
 pub async fn spotify_control(app: AppHandle, action: String, value: Option<f64>) -> bool {
     #[cfg(target_os = "linux")]
@@ -931,7 +931,7 @@ mod linux {
                     }
                 }
                 "shuffle" => p.set(PLAYER, "Shuffle", v != 0.0),
-                "repeat" => p.set(PLAYER, "LoopStatus", if v != 0.0 { "Playlist" } else { "None" }),
+                "repeat" => p.set(PLAYER, "LoopStatus", match v as u8 { 2 => "Track", 1 => "Playlist", _ => "None" }),
                 "volume" => p.set(PLAYER, "Volume", (v / 100.0).clamp(0.0, 1.0)),
                 _ => Err(dbus::Error::new_failed("unknown action")),
             }
@@ -947,7 +947,7 @@ mod linux {
                 ("Position".into(), Value::Int((target * 1_000_000.0) as i64))
             }),
             "shuffle" => Some(("Shuffle".into(), Value::Bool(v != 0.0))),
-            "repeat" => Some(("LoopStatus".into(), Value::Str(if v != 0.0 { "Playlist" } else { "None" }.into()))),
+            "repeat" => Some(("LoopStatus".into(), Value::Str(match v as u8 { 2 => "Track", 1 => "Playlist", _ => "None" }.into()))),
             "volume" => Some(("Volume".into(), Value::Float((v / 100.0).clamp(0.0, 1.0)))),
             _ => None,
         };
@@ -1175,7 +1175,7 @@ mod linux {
             assert_eq!(track.duration, 213.0);
             assert_eq!(track.art_url.as_deref(), Some("https://i.scdn.co/image/ab67616d0000b273abc"));
             assert_eq!(track.object_path, "/com/spotify/track/4uLU6hMCjMI75M1A2tKUQC");
-            assert!(state.playing && state.shuffle && state.repeat);
+            assert!(state.playing && state.shuffle && state.repeat == 2);
             assert_eq!(state.volume, 42);
             assert_eq!(state.position, 12.5);
             assert_eq!(state.position_at, 1_000.0);
@@ -1612,7 +1612,7 @@ mod win {
         /// When Windows last updated the position (Unix ms), if it says.
         updated_at: Option<f64>,
         shuffle: bool,
-        repeat: bool,
+        repeat: u8,
     }
 
     fn snapshot(session: &Session) -> windows::core::Result<(Snapshot, MediaProperties)> {
@@ -1633,10 +1633,11 @@ mod win {
             position: ticks_to_secs(timeline.Position()?.Duration - start),
             updated_at: windows_time_to_unix_ms(timeline.LastUpdatedTime()?.UniversalTime),
             shuffle: info.IsShuffleActive().and_then(|r| r.Value()).unwrap_or(false),
-            repeat: info
-                .AutoRepeatMode()
-                .and_then(|r| r.Value())
-                .is_ok_and(|mode| mode != MediaPlaybackAutoRepeatMode::None),
+            repeat: match info.AutoRepeatMode().and_then(|r| r.Value()) {
+                Ok(MediaPlaybackAutoRepeatMode::Track) => 2,
+                Ok(MediaPlaybackAutoRepeatMode::List) => 1,
+                _ => 0,
+            },
         };
         Ok((snapshot, props))
     }
@@ -1826,10 +1827,10 @@ mod win {
                 _ => false,
             },
             "shuffle" => asked!(session.TryChangeShuffleActiveAsync(v != 0.0)),
-            "repeat" => asked!(session.TryChangeAutoRepeatModeAsync(if v != 0.0 {
-                MediaPlaybackAutoRepeatMode::List
-            } else {
-                MediaPlaybackAutoRepeatMode::None
+            "repeat" => asked!(session.TryChangeAutoRepeatModeAsync(match v as u8 {
+                2 => MediaPlaybackAutoRepeatMode::Track,
+                1 => MediaPlaybackAutoRepeatMode::List,
+                _ => MediaPlaybackAutoRepeatMode::None,
             })),
             "volume" => set_spotify_volume(v),
             _ => false,
@@ -1849,7 +1850,7 @@ mod win {
                         }
                     }
                     "shuffle" => s.state.shuffle = v != 0.0,
-                    "repeat" => s.state.repeat = v != 0.0,
+                    "repeat" => s.state.repeat = (v as u8).min(2),
                     _ => s.state.volume = v.round().clamp(0.0, 100.0) as i32,
                 }
                 s.state.clone()
@@ -2013,10 +2014,10 @@ mod tests {
             ],
             0.0,
         );
-        assert!(state.shuffle && state.repeat);
+        assert!(state.shuffle && state.repeat == 1);
         assert_eq!(state.volume, 100);
         state.apply(&[("LoopStatus".into(), s("None")), ("Volume".into(), Value::Float(0.004))], 0.0);
-        assert!(!state.repeat);
+        assert_eq!(state.repeat, 0);
         assert_eq!(state.volume, 0);
     }
 
