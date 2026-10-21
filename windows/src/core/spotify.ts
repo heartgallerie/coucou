@@ -31,14 +31,15 @@ export interface SpotifyState {
   position: number;
   positionAt: number;
   shuffle: boolean;
-  repeat: boolean;
+  /** 0 = off, 1 = repeat all, 2 = repeat one. */
+  repeat: 0 | 1 | 2;
   /** 0…100. */
   volume: number;
 }
 
 export const IDLE_SPOTIFY: SpotifyState = {
   running: false, installed: false, track: null, playing: false,
-  position: 0, positionAt: 0, shuffle: false, repeat: false, volume: 50,
+  position: 0, positionAt: 0, shuffle: false, repeat: 0, volume: 50,
 };
 
 /** The page's copy of the player, and the cover of the track that has one. */
