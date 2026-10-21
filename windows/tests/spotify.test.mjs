@@ -281,6 +281,7 @@ test("the playing card: title, artist · album, times, and the controls", () => 
   repeat.fire("click");
   assert.deepEqual(sent("spotify_control").slice(-1), [{ action: "repeat", value: 2 }]);
   assert.equal(Spotify.state.repeat, 2);
+  card.sync();
   assert.equal(repeat.title, "Repeat one");
   repeat.fire("click");
   assert.equal(Spotify.state.repeat, 0);
