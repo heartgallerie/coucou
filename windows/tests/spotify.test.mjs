@@ -277,7 +277,13 @@ test("the playing card: title, artist · album, times, and the controls", () => 
   ]);
   // The page shows the clicks at once.
   assert.equal(Spotify.state.shuffle, false);
-  assert.equal(Spotify.state.repeat, true);
+  assert.equal(Spotify.state.repeat, 1);
+  repeat.fire("click");
+  assert.deepEqual(sent("spotify_control").slice(-1), [{ action: "repeat", value: 2 }]);
+  assert.equal(Spotify.state.repeat, 2);
+  assert.equal(repeat.title, "Repeat one");
+  repeat.fire("click");
+  assert.equal(Spotify.state.repeat, 0);
   assert.equal(Spotify.state.playing, true);
 
   Spotify.state = playing({ track: track({ id: "spotify:ad:9", title: "x", artist: "", album: "" }) });
